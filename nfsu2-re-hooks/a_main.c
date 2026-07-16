@@ -6,6 +6,7 @@
 #include <math.h>
 #undef log
 #include <d3d9.h>
+#include "minhook/include/MinHook.h"
 #pragma pack(push,1)
 
 #define STATIC_ASSERT(E) typedef char __static_assert_[(E)?1:-1]
@@ -15,7 +16,7 @@
 
 static int base;
 
-//#define LOG_TO_LOGFILE
+#define LOG_TO_LOGFILE
 //#define LOG_TO_DEBUGSTRING
 #define LOG_TO_PRINTF
 
@@ -41,7 +42,7 @@ static void stub() {}
 
 /*note: hash hooks can get called A LOT so this may slow down the game*/
 #include "d3d9.c"
-#include "runwindowed.c" // must be on top for NFSU2_RUN_WINDOWED define, needed for mouse stuff
+//#include "runwindowed.c" // forces windowed mode + hardcoded resolution; collides with WidescreenFix.asi's own resolution/window patches, disabled since FF work needs neither
 #include "faux-enable-console.c"
 //#include "hook-43DB50-hash-cs.c"
 //#include "hook-440B40-AllocateAndInitPool.c"
@@ -56,6 +57,13 @@ static void stub() {}
 //#include "hook-55DC20-SendSomethingToFNG.c"
 //#include "hook-57CAC0-SomethingWithABinFile.c"
 //#include "hook-74A6ED-recv.c"
+#include "hook-ff-event-mapping.c"
+/* DO NOT re-enable hook-5BFEE0-ff-dispatcher-caller.c: deterministic crash at the
+   control-handoff frame (fault 0x5BFF0F, retaddr=0x5C96CF index=1) regardless of trampoline
+   weight -- narrow pre-existing race in stock code, not a hook-overhead issue. Use Cheat
+   Engine set_breakpoint (non-intrusive hardware breakpoint) on 0x5BFEE0 instead; it already
+   captured equivalent index/register data with zero crashes across a full play session. */
+//#include "hook-5BFEE0-ff-dispatcher-caller.c"
 //#include "hook-fileapi.c"
 //#include "hook-realcore-filesystem.c"
 //#include "replace-440BB0-Pool__Extend.c"
@@ -127,8 +135,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason_for_call, LPVOID lpResrvd)
 		if (base != 0x400000) {
 			log(buf, sprintf(buf, "base is not at 400000!"));
 		}
+		MH_Initialize();
 		INIT_FUNC();
 	} else if (reason_for_call == DLL_PROCESS_DETACH) {
+		MH_Uninitialize();
 		if (logfile) {
 			fclose(logfile);
 		}

@@ -81,8 +81,21 @@ to the rest of this project.
   commits, IDA-derived symbol DB generated from `SPEED2.idc`, C hook
   injection files compiled as a VS2005-era project)
 - Fork: https://github.com/emilwojcik93/nfsu2-re (`origin` remote)
-- Local clone: `C:\Users\ewojcik\dev\nfsu2-re`
+- Local clone (this machine): `C:\Users\Endurable4847\NFSU2-project\nfsu2-rumble-dev\nfsu2-re`
+  — arrived as a file copy, not an actual `git clone` (`.git` was missing);
+  re-attached to the real history this session (`git init` + `git remote add`
+  + `git fetch` + `git reset <remote-branch>`, which only moves HEAD/index,
+  never touches working-tree files, so nothing already on disk was clobbered).
 - Branch: `feature/rumble-ff-event-mapping` (pushed to origin, tracked)
+- **`SPEED2.idc` is NOT present in this machine's copy** — only `SPEED2.CT`
+  is. `docs/funcs.html` is still present (pre-generated) and was usable for
+  address lookups, but it has real gaps: a ~36 KB span
+  (`0x5BF940`–`0x5C9020`) that contains ALL of the FF call sites this project
+  found is entirely undocumented and nearest-symbol lookups against it are
+  actively misleading (see Progress Log). Live disassembly via the Cheat
+  Engine MCP bridge (see `cheatengine-mcp-bridge/` at the project root) was
+  the reliable source of truth, not the generated docs, for this whole
+  investigation.
 - Relevant existing structure:
   - `nfsu2-re-hooks/` — ~40 existing hook `.c` files (UI, filesystem,
     networking, hashing patches) built via `nfsu2-re-hooks.vcproj`. No
@@ -126,10 +139,183 @@ to the rest of this project.
 See `dev-notes/SETUP-CHECKLIST.md` for the tool list to install before
 starting Phase 1.
 
-## Open item / TODO
+## Progress Log (this session)
 
-The actual NFSU2 game install (`C:\Games\NFSU2` on the original machine, a
-1:1 copy scp'd from `fractal`) has **not** been transferred to this dev
-machine yet — testing requires the real game running here. This needs to
-happen separately (same scp-from-fractal approach, or copy from the Ally
-X/original machine) before Phase 1 investigation can start for real.
+Game install transferred to this machine at
+`C:\Users\Endurable4847\NFSU2-project\NFSU2` (resolves the old Open Item
+below). Phase 1–2 of the Plan (Investigation, Correlate) are largely done;
+Phase 3 (Extend) has not started yet.
+
+### What was built
+
+- `nfsu2-re-hooks/hook-ff-event-mapping.c` — MinHook-based hooks on
+  `IDirectInputDevice8::CreateEffect`, `IDirectInputEffect::Start`,
+  `::SetParameters`. Technique: create a throwaway `GUID_SysKeyboard` device
+  via `DirectInput8Create`, steal its vtable (shared across all
+  `IDirectInputDevice8`/`IDirectInputEffect` instances of the same backend
+  class, so hooking via a dummy device also catches the game's real gamepad
+  device), `MH_CreateHook`/`MH_EnableHook` on the relevant slots, release the
+  dummy objects (hooked code stays resident in the owning DLL, unaffected by
+  releasing the instance that revealed it). Logs caller return address +
+  `DIEFFECT` fields + first 3 DWORDs of `lpvTypeSpecificParams` (generic dump,
+  not decoded per-type) + the call's `HRESULT`.
+  - **Important:** the actual `DirectInput8Create`/device-creation call must
+    run on a spawned thread (`CreateThread`), not synchronously in `DllMain`.
+    Doing it in `DllMain(DLL_PROCESS_ATTACH)` directly hit the Windows loader
+    lock and crashed the process on the very first launch.
+  - `MinHook` (v1.3.4) vendored under `nfsu2-re-hooks/minhook/` (`include/`,
+    `lib/libMinHook.x86.lib` static). Project links it statically; no extra
+    DLL needed in the game folder. Known cosmetic issue: `LNK4098` (LIBCMT
+    vs the project's `/MDd`) — harmless for what MinHook does (own
+    VirtualAlloc-based trampoline allocator, doesn't lean on the CRT), but
+    the first thing to suspect if heap corruption ever shows up near this
+    code.
+- `nfsu2-re-hooks/hook-5BFEE0-ff-dispatcher-caller.c` — **written, currently
+  disabled, do not re-enable.** See "Dead end" below.
+- Toolchain: this machine's Visual Studio ("18", a newer/preview generation)
+  ships **no C++ workload by default** — had to install
+  `Microsoft.VisualStudio.Workload.NativeDesktop` via `vs_installer.exe
+  modify` before anything would build. Its native `PlatformToolset` is
+  `v145`, not `v143`/`v142` — the old VS2005 `.vcproj` can't be silently
+  upgraded on this VS generation (the command-line `/Upgrade` path is
+  GUI-gated now), so a hand-written `nfsu2-re-hooks.vcxproj` was created
+  instead (`PlatformToolset=v145`), targeting `Debug|Win32`, output
+  redirected straight to `NFSU2\SCRIPTS\nfsu2-re-hooks.asi`. Only `a_main.c`
+  is an actual compiled translation unit; every other `.c` file in the
+  project (including the two new hook files) is `ExcludedFromBuild` and
+  pulled in via `#include` from `a_main.c` — matches this project's existing
+  single-TU convention, not something introduced this session.
+
+### Confirmed working (rumble fires)
+
+- Surface-type transitions (asphalt ↔ off-road) — the original, known-good
+  baseline.
+- Crashes into public traffic cars, other racing cars — wait, see below,
+  only *civilian* traffic and walls/objects confirmed; racer-vs-racer crash
+  is unconfirmed/inconsistent, see "Confirmed NOT working."
+- Crashes into walls and static objects (highway water barrels, dumpsters).
+- Car reset (the "flip car back over" action).
+- Two distinct intensity tiers on impacts, driven by impact speed — this is
+  real, confirmed via the logged `lpvTypeSpecificParams` first DWORD
+  actually varying (observed values from 0 up to ~7000+), not a fixed
+  constant. `dwGain` itself is *always* `10000` (max) — the user's
+  perception that "overall loudness" feels constant is also correct, that
+  scalar never changes; the actual per-hit variation lives in the
+  type-specific magnitude field instead.
+
+### Confirmed NOT working (zero FF calls reach DirectInput at all)
+
+- Menu/UI interactions: SMS, map, in-game menu.
+- Points of interest (message/event markers on track).
+- Nitro activation.
+- Confirmed at the deepest level available: a non-intrusive Cheat Engine
+  hardware breakpoint on the shared FF-trigger dispatcher (`0x5BFEE0`, see
+  below) recorded **zero hits** during several minutes of dedicated testing
+  of exactly these interactions, and the regular DirectInput-level log went
+  completely silent for the same window. Not "quiet," not "subtle" —
+  nothing in the FF call chain executes for these at all in the PC build.
+- Racer-vs-racer car crash, and slides/handbrake/360-spins/braking/
+  acceleration as dedicated events: no distinct trigger found for any of
+  these. What sporadic rumble the user felt during drift/360 attempts traced
+  back to already-known channels (continuous terrain/handling effects, or
+  incidental curb/wall clips), not anything drift-specific.
+
+### Key structural finding: one shared dispatcher, five effect objects
+
+- Exactly two `CreateEffect` call sites exist in the entire logged session:
+  - `0x5C0660` → creates `GUID_Spring` (`13541C27`) and `GUID_Damper`
+    (`13541C28`) — DirectInput *condition* effects, used for the continuous
+    "road/terrain feel."
+  - `0x5C8E95` → creates `GUID_Square` (`13541C22`), `GUID_Sine`
+    (`13541C23`), `GUID_Triangle` (`13541C24`) — *periodic* effects, used for
+    discrete impact "punch."
+- All `Start()` calls on all 5 effects return through **one shared
+  dispatcher function at `0x5BFEE0`**: `Dispatch(vehicle_or_context, arg1,
+  effectIndex, arg3)` → looks up `effect = table[effectIndex]` → calls
+  `effect->Start(1, 0)`.
+- `find_call_references` (Cheat Engine MCP bridge) against `0x5BFEE0` found
+  **21 distinct call sites**, all clustered in one ~4 KB block
+  (`0x5C92D1`–`0x5CA359`) — clearly one big collision/event-reaction
+  function, not scattered inline calls. Sampled index arguments across
+  several sites: 0, 1, 2, 3 seen (index 4 not directly confirmed but 5
+  effect objects exist, so it's presumed to exist too).
+- Live (non-intrusive) hardware-breakpoint capture on `0x5BFEE0` during
+  normal driving showed: index 0 and index 3 fire continuously (many times
+  per second) regardless of specific action — these are the two ongoing
+  condition-effect "feel" channels, always live while driving. Index 1 fires
+  only sporadically, carrying large `typespecific` magnitude values matching
+  known impact numbers from the regular log — this is the discrete
+  impact/crash effect.
+- This exactly matches the community report at
+  [ThirteenAG/WidescreenFixesPack#799](https://github.com/ThirteenAG/WidescreenFixesPack/issues/799)
+  ("only ~2 triggers work") — now with hard numbers behind it instead of
+  just an anecdote.
+
+### Dead end: do not hook `0x5BFEE0` directly (the dispatcher)
+
+Tried twice, in two forms, to patch the dispatcher's own entry point
+(`mkjmp`-style, same technique as this project's other static hooks) to log
+the *caller's* return address (the vtable hooks above only ever see
+`0x5BFF18`, the return address *inside* this dispatcher after calling
+`Start()`, not whoever called the dispatcher itself):
+
+1. First attempt: full `pushad`/`popad` around a C logger call. Crashed the
+   game deterministically, every time, at the very first frame where control
+   is handed to the player (fault at `0x5BFF0F`, a null effect-pointer deref
+   a few instructions into the *original, unmodified* function body).
+2. Second attempt: rewrote as a minimal trampoline — only touches
+   `EAX`/`EDX` (caller-volatile by convention, nothing relies on their
+   incoming value), never writes `ECX`/`EBX`/`ESI`/`EDI`/`EBP`. Still crashed
+   at the exact same fault address, on the exact same call
+   (`retaddr=0x5C96CF, index=1` — the "control just handed to player" frame).
+
+Since two implementations with very different overhead both fail
+identically on the identical call, this isn't a hook-weight/timing-race
+issue — something about merely intercepting this function's entry point at
+all breaks it on that one specific frame, or per-call precisely.
+
+The address is real, correct, verified via `find_call_references` and
+manual disassembly (the vtable-slot arithmetic — `call [ecx+18]` /
+`call [ecx+1C]` = slots 6/7 = `SetParameters`/`Start` — checks out
+byte-for-byte against the logged behavior), so this is not a "wrong
+address" bug. Treat `0x5BFEE0` as **investigate-only via Cheat Engine
+hardware breakpoints (`set_breakpoint`, non-intrusive, proven safe across
+multiple full sessions with zero crashes) — never patch its code directly.**
+`hook-5BFEE0-ff-dispatcher-caller.c` is left in the tree (commented out of
+`a_main.c`) for reference/future retry, not deleted.
+
+### External validation: GameCube version
+
+User separately booted the GameCube release of the same game: slides,
+braking, nitro, and all crash types fire rumble there, with sensitivity
+tiers. Confirms this is purely a **PC-port wiring gap**, not missing
+detection logic — the same underlying physics/event-detection almost
+certainly still exists in the PC binary (same engine, same game), it just
+never got connected to the 21-site dispatcher above. Full GameCube
+disassembly (different ISA, would need Dolphin + a PowerPC disassembler) was
+considered but is not believed necessary — the plan is to find the missing
+PC-side trigger points directly (live memory-scan for nitro/drift state,
+`find_call_references` from there) rather than doing comparative RE against
+the console build.
+
+### Next steps (not started)
+
+1. Live-locate the nitro-amount (and, separately, drift/slip-angle) memory
+   address via Cheat Engine `scan_all`/`next_scan` while the user actually
+   plays, then `find_call_references` on whatever writes it to find the
+   activation function.
+2. From that function, add a **new** call into the existing 5-effect
+   dispatcher (reuse an existing effect slot, most likely the periodic
+   "impact" one) — this is the safer patch target established above (this
+   is a discrete, presumably-once-per-activation function, not the
+   every-frame dispatcher itself, so the same crash risk should not apply,
+   but confirm the call frequency before patching).
+3. Decode `lpvTypeSpecificParams` properly per effect GUID (currently just a
+   generic first-3-DWORDs dump) if per-event magnitude tuning is wanted.
+
+## Open item / TODO (resolved)
+
+~~The actual NFSU2 game install... has not been transferred to this dev
+machine yet~~ — done; game is installed at
+`C:\Users\Endurable4847\NFSU2-project\NFSU2` and has been used for all
+testing described above.

@@ -3,42 +3,55 @@
 Manual installs needed before development starts. NFSU2 is a **32-bit**
 game — every tool/library below must be the 32-bit build where it matters.
 
-- [ ] **Visual Studio 2022 Community** — Desktop C++ workload. This repo's
-      project files are old `.vcproj` (VS2005-era); VS2022 will offer to
-      upgrade them on first open. If the upgrade wizard complains about a
-      missing platform toolset, also install the **MSVC v141/v142** build
-      tools component (VS2017/2019 toolsets) for compatibility.
-- [ ] **MinHook** — https://github.com/TsudaKageyu/minhook — x86 inline
-      hooking library, used to intercept the DirectInput FF calls. (Detours
-      is a heavier alternative; MinHook is simpler for this scope.)
+- [x] **Visual Studio 2022 Community** — Desktop C++ workload. NOT installed
+      by default on this machine's VS ("18" generation) despite being
+      present — had to run `vs_installer.exe modify --add
+      Microsoft.VisualStudio.Workload.NativeDesktop` explicitly. Its native
+      toolset is `PlatformToolset=v145`, not `v143`/`v142`; the old
+      `.vcproj` couldn't be silently upgraded (command-line `/Upgrade` is
+      GUI-gated on this VS generation), so a hand-written `.vcxproj` was
+      used instead (see `AI-CONTEXT.md` Progress Log).
+- [x] **MinHook** — https://github.com/TsudaKageyu/minhook — vendored under
+      `nfsu2-re-hooks/minhook/` (v1.3.4, static `libMinHook.x86.lib`).
+      In use by `hook-ff-event-mapping.c`.
 - [ ] **x32dbg** — the 32-bit variant from the x64dbg suite,
-      https://x64dbg.com — for live debugging: breakpoints on `dinput8.dll`
-      exports, call-stack inspection while playing.
-- [ ] **Cheat Engine** — https://cheatengine.org — live memory inspection;
-      the repo already ships `SPEED2.CT` as a starting cheat table for
-      vehicle-state structures.
-- [ ] **IDA Free** — https://hex-rays.com/ida-free — the repo's symbol
-      database (`SPEED2.idc`) is IDA-format; loading it gives named
-      functions/structs to cross-reference hook call-site addresses against.
-- [ ] **Ultimate ASI Loader** —
-      https://github.com/ThirteenAG/Ultimate-ASI-Loader — standard, clean
-      way to auto-load a custom DLL into NFSU2 without manual injection.
-      Drop a proxy DLL into the game folder; pick a free proxy-DLL slot —
-      check what the game/other mods already use before choosing (e.g. on
-      the original install, `dinput8.dll` was already taken by ReShade;
-      `winmm.dll` or `version.dll` are common free choices).
-- [ ] *(Optional, faster iteration)* **Frida** — https://frida.re — dynamic
-      instrumentation; hook/log the FF calls from a Python script without
-      recompiling C++ each time. Good for the initial "which call sites
-      exist" investigation phase before committing to the compiled MinHook
-      DLL.
-- [ ] **Git** + **GitHub CLI (`gh`)** — repo is already cloned and configured
-      on this machine if you're reading this from the prepared archive; if
-      setting up fresh elsewhere, `gh auth login` then
-      `git clone git@github.com:emilwojcik93/nfsu2-re.git`.
-- [ ] **NFSU2 game install itself** — not included in this archive. Needs to
-      be copied separately onto this dev machine before Phase 1 testing can
-      start (see `AI-CONTEXT.md` Open Item).
+      https://x64dbg.com — installed via `winget` on this machine, but its
+      CLI aliases didn't register (needs a fresh shell to pick up PATH
+      changes from the winget shim, or manual PATH entry). Not used yet this
+      session — Cheat Engine's live disassembly covered everything needed
+      so far.
+- [x] **Cheat Engine** — https://cheatengine.org — used extensively this
+      session via `cheatengine-mcp-bridge` (see project root) for live
+      disassembly, `find_call_references`, and non-intrusive hardware
+      breakpoints. **Critical**: Settings → Extra → disable "Query memory
+      region routines" (BSOD risk with DBVM) — verify this is off before any
+      `scan_all`/`aob_scan` work.
+- [ ] **IDA Free** — https://hex-rays.com/ida-free — installed, but
+      **`SPEED2.idc` is missing from this machine's copy of the repo**
+      (only `SPEED2.CT` came over). Never actually used this session; live
+      Cheat Engine disassembly substituted for it. `docs/funcs.html` (the
+      pre-generated static docs) was used for lookups instead, with the
+      caveat that it has real undocumented gaps (see `AI-CONTEXT.md`).
+- [x] **Ultimate ASI Loader** —
+      https://github.com/ThirteenAG/Ultimate-ASI-Loader — already correctly
+      installed on this machine's game copy (`dinput8.dll`, v9.7.2, in
+      `NFSU2\`), loading from `NFSU2\SCRIPTS\`. `nfsu2-re-hooks.asi` builds
+      straight into that folder now.
+- [ ] *(Optional, not used)* **Frida** — https://frida.re — installed
+      (`pip install frida-tools`) but not needed; the compiled MinHook path
+      plus Cheat Engine covered the whole investigation without it.
+- [x] **Git** + **GitHub CLI (`gh`)** — both present, `gh auth status` shows
+      logged in as `emilwojcik93` (matches the fork owner). **Caveat**: this
+      machine's copy of `nfsu2-re` was a plain file copy, NOT an actual
+      `git clone` — no `.git` directory existed. Re-attached to the real
+      history via `git init` + `git remote add origin` + `git fetch` +
+      `git reset <remote-branch>` (mixed reset only moves HEAD/index, never
+      touches working-tree files — safe to do without losing any local
+      changes already on disk). If setting up fresh elsewhere, just
+      `git clone git@github.com:emilwojcik93/nfsu2-re.git` properly instead.
+- [x] **NFSU2 game install itself** — done, at
+      `C:\Users\Endurable4847\NFSU2-project\NFSU2` (see `AI-CONTEXT.md` Open
+      Item, now resolved).
 
 ## Repo already prepared (in this archive)
 

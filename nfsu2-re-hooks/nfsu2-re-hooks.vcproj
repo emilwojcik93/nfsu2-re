@@ -38,7 +38,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;c:\Program Files (x86)\Windows Kits\8.0\Include\shared&quot;;&quot;c:\Program Files (x86)\Windows Kits\8.0\Include\um&quot;"
+				AdditionalIncludeDirectories="&quot;c:\Program Files (x86)\Windows Kits\8.0\Include\shared&quot;;&quot;c:\Program Files (x86)\Windows Kits\8.0\Include\um&quot;;&quot;$(ProjectDir)minhook\include&quot;"
 				DebugInformationFormat="4"
 				CompileAs="1"
 			/>
@@ -53,13 +53,13 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="kernel32.lib user32.lib gdi32.lib comctl32.lib"
-				OutputFile="$(SolutionDir)\..\NeedForSpeed U2\scripts\$(ProjectName).asi"
-				AdditionalLibraryDirectories="&quot;C:\Program Files (x86)\Windows Kits\8.0\Lib\win8\um\x86&quot;;&quot;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Lib&quot;"
+				AdditionalDependencies="kernel32.lib user32.lib gdi32.lib comctl32.lib libMinHook.x86.lib"
+				OutputFile="C:\Users\Endurable4847\NFSU2-project\NFSU2\SCRIPTS\$(ProjectName).asi"
+				AdditionalLibraryDirectories="&quot;C:\Program Files (x86)\Windows Kits\8.0\Lib\win8\um\x86&quot;;&quot;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Lib&quot;;&quot;$(ProjectDir)minhook\lib&quot;"
 				IgnoreDefaultLibraryNames="uuid.lib"
 				GenerateDebugInformation="true"
 				AssemblyDebug="0"
-				ProgramDatabaseFile="$(SolutionDir)\..\NeedForSpeed U2\scripts\$(ProjectName).pdb"
+				ProgramDatabaseFile="C:\Users\Endurable4847\NFSU2-project\NFSU2\SCRIPTS\$(ProjectName).pdb"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -684,6 +684,30 @@
 		</File>
 		<File
 			RelativePath=".\hook-74A6ED-recv.c"
+			>
+			<FileConfiguration
+				Name="Debug|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath=".\hook-ff-event-mapping.c"
+			>
+			<FileConfiguration
+				Name="Debug|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath=".\hook-ff-event-mapping.c"
 			>
 			<FileConfiguration
 				Name="Debug|Win32"
